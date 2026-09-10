@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Marcador de cartas</title>
+  <rect width="512" height="512" fill="#183524"/>
+  <rect x="140" y="126" width="202" height="274" rx="30" fill="#d8ecdf" transform="rotate(-9 241 263)"/>
+  <rect x="172" y="122" width="202" height="274" rx="30" fill="#fffdf8" stroke="#18221c" stroke-width="10"/>
+  <path d="M273 210c-27-38-78-6-51 33l51 60 51-60c27-39-24-71-51-33Z" fill="#a83e35"/>
+</svg>
+
