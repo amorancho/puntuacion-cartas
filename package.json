@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Marcador familiar de juegos de cartas, instalable y sin conexión.",
   "scripts": {
-    "build": "tailwindcss -i ./src/css/input.css -o ./dist/css/styles.css --minify && node ./scripts/build-site.mjs",
+    "build": "tailwindcss -i ./src/css/input.css -o ./dist/css/styles.css -m && node ./scripts/build-site.mjs",
     "dev": "tailwindcss -i ./src/css/input.css -o ./dist/css/styles.css --watch",
     "serve": "node ./scripts/serve.mjs",
     "test": "node --test"

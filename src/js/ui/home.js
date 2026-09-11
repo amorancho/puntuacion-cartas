@@ -1,5 +1,6 @@
 import { calculateGameProgress as calculatePinacleProgress, getGameResult as getPinacleResult } from "../games/pinacle.js";
 import { calculateGameProgress as calculateEscobaProgress, getGameResult as getEscobaResult } from "../games/escoba.js";
+import { calculateGameProgress as calculateBriscaProgress, getGameResult as getBriscaResult } from "../games/brisca.js";
 import { escapeHtml, formatDate, formatPoints } from "../utils.js";
 import { cardSuit } from "./components.js";
 
@@ -21,9 +22,19 @@ function gameTile(game, suit, accent) {
 }
 
 function savedGameRow(game) {
-  const isEscoba = game.type === "escoba";
-  const { standings } = (isEscoba ? calculateEscobaProgress : calculatePinacleProgress)(game);
-  const result = (isEscoba ? getEscobaResult : getPinacleResult)(game);
+  const progressCalculators = {
+    pinacle: calculatePinacleProgress,
+    escoba: calculateEscobaProgress,
+    brisca: calculateBriscaProgress
+  };
+  const resultCalculators = {
+    pinacle: getPinacleResult,
+    escoba: getEscobaResult,
+    brisca: getBriscaResult
+  };
+  const gameNames = { pinacle: "Pinacle", escoba: "Escoba", brisca: "Brisca" };
+  const { standings } = progressCalculators[game.type](game);
+  const result = resultCalculators[game.type](game);
   const resultText = result?.type === "winner"
     ? `Ganó ${result.participant.name}`
     : result?.type === "tie"
@@ -35,7 +46,7 @@ function savedGameRow(game) {
   return `
     <button type="button" data-action="view-saved-game" data-game-id="${escapeHtml(game.id)}" class="flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl px-3 py-2 text-left transition hover:bg-felt-50">
       <span class="min-w-0">
-        <span class="block truncate font-extrabold">${isEscoba ? "Escoba" : "Pinacle"} · ${game.participants.map(({ name }) => escapeHtml(name)).join(", ")}</span>
+        <span class="block truncate font-extrabold">${gameNames[game.type]} · ${game.participants.map(({ name }) => escapeHtml(name)).join(", ")}</span>
         <span class="block text-sm text-black/55">${formatDate(game.createdAt)} · ${game.rounds.length} turno${game.rounds.length === 1 ? "" : "s"} · ${escapeHtml(resultText)}</span>
       </span>
       <span class="shrink-0 text-xl text-felt-700" aria-hidden="true">›</span>
@@ -74,7 +85,7 @@ export function renderHome({ games, activeGame, canInstall }) {
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
         ${gameTile({ id: "pinacle", name: "Pinacle", implemented: true }, "♠", "text-ink")}
         ${gameTile({ id: "escoba", name: "Escoba", implemented: true }, "♦", "text-exact")}
-        ${gameTile({ id: "brisca", name: "Brisca", implemented: false }, "♣", "text-felt-700")}
+        ${gameTile({ id: "brisca", name: "Brisca", implemented: true }, "♣", "text-felt-700")}
       </div>
 
       ${canInstall ? `

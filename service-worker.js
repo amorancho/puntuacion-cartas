@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "puntuacion-cartas-";
-const CACHE_NAME = `${CACHE_PREFIX}v4`;
+const CACHE_NAME = `${CACHE_PREFIX}v5`;
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -17,8 +17,10 @@ const APP_SHELL = [
   "./src/js/ui/home.js",
   "./src/js/ui/setup.js",
   "./src/js/ui/setup-escoba.js",
+  "./src/js/ui/setup-brisca.js",
   "./src/js/ui/game.js",
   "./src/js/ui/game-escoba.js",
+  "./src/js/ui/game-brisca.js",
   "./assets/icons/card-score-192.png",
   "./assets/icons/card-score-512.png",
   "./assets/icons/card-score-maskable-512.png",

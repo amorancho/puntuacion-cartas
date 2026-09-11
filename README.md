@@ -1,6 +1,6 @@
 # Marcador de cartas
 
-Aplicación web mobile first para llevar las puntuaciones de partidas familiares. Incluye Pinacle para 2 o 3 participantes y Escoba para 2 jugadores; Brisca queda visible como próximo juego.
+Aplicación web mobile first para llevar las puntuaciones de partidas familiares. Incluye Pinacle para 2 o 3 participantes, Escoba para 2 jugadores y Brisca para 2, 3 o 4 jugadores.
 
 No usa backend ni dependencias en tiempo de ejecución. Las partidas y los participantes frecuentes se guardan en `localStorage` y las rondas son la única fuente de verdad para todos los cálculos.
 

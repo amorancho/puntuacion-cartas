@@ -1,6 +1,7 @@
 import { getGameMetadata } from "./games/index.js";
 import { getGameResult as getPinacleResult } from "./games/pinacle.js";
 import { escobaAwards, getGameResult as getEscobaResult } from "./games/escoba.js";
+import { BRISCA_ROUND_TOTAL, getGameResult as getBriscaResult } from "./games/brisca.js";
 import {
   acknowledgeResult,
   addFrequentParticipant,
@@ -11,15 +12,18 @@ import {
   getActiveGame,
   getGame,
   getState,
+  startBriscaGame,
   startEscobaGame,
   startPinacleGame,
   subscribe,
   updateRound
 } from "./state.js";
 import { renderGame } from "./ui/game.js";
+import { renderBriscaGame } from "./ui/game-brisca.js";
 import { renderEscobaGame } from "./ui/game-escoba.js";
 import { renderHome } from "./ui/home.js";
 import { renderSetup } from "./ui/setup.js";
+import { renderBriscaSetup } from "./ui/setup-brisca.js";
 import { renderEscobaSetup } from "./ui/setup-escoba.js";
 
 const root = document.querySelector("#app");
@@ -34,25 +38,19 @@ const ui = {
 };
 
 function freshSetup(gameType = "pinacle") {
-  return gameType === "escoba"
-    ? {
-        gameType,
-        playerCount: 2,
-        selectedParticipantIds: [],
-        targetScore: 15,
-        firstDealerId: null
-      }
-    : {
-        gameType,
-        playerCount: 2,
-        selectedParticipantIds: [],
-        targetScore: 1500,
-        firstCutterId: null
-      };
+  if (gameType === "escoba") {
+    return { gameType, playerCount: 2, selectedParticipantIds: [], targetScore: 15, firstDealerId: null };
+  }
+  if (gameType === "brisca") {
+    return { gameType, playerCount: 2, selectedParticipantIds: [], targetScore: 240, firstDealerId: null };
+  }
+  return { gameType, playerCount: 2, selectedParticipantIds: [], targetScore: 1500, firstCutterId: null };
 }
 
 function gameResult(game) {
-  return game.type === "escoba" ? getEscobaResult(game) : getPinacleResult(game);
+  if (game.type === "escoba") return getEscobaResult(game);
+  if (game.type === "brisca") return getBriscaResult(game);
+  return getPinacleResult(game);
 }
 
 function currentRoute() {
@@ -77,9 +75,13 @@ function renderRoute() {
   const state = getState();
 
   if (route.view === "setup") {
-    const gameType = route.id === "escoba" ? "escoba" : "pinacle";
+    const gameType = ["escoba", "brisca"].includes(route.id) ? route.id : "pinacle";
     if (ui.setup?.gameType !== gameType) ui.setup = freshSetup(gameType);
-    const setupRenderer = gameType === "escoba" ? renderEscobaSetup : renderSetup;
+    const setupRenderer = gameType === "escoba"
+      ? renderEscobaSetup
+      : gameType === "brisca"
+        ? renderBriscaSetup
+        : renderSetup;
     root.innerHTML = setupRenderer({
       participants: state.participants,
       setup: ui.setup,
@@ -92,9 +94,12 @@ function renderRoute() {
     const game = getGame(route.id);
     if (game) {
       if (!game.rounds.some(({ id }) => id === ui.editingRoundId)) ui.editingRoundId = null;
-      root.innerHTML = game.type === "escoba"
-        ? renderEscobaGame({ game, editingRoundId: ui.editingRoundId })
-        : renderGame({ game, editingRoundId: ui.editingRoundId });
+      const gameRenderer = game.type === "escoba"
+        ? renderEscobaGame
+        : game.type === "brisca"
+          ? renderBriscaGame
+          : renderGame;
+      root.innerHTML = gameRenderer({ game, editingRoundId: ui.editingRoundId });
       return;
     }
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/home`);
@@ -123,7 +128,7 @@ function showInlineError(elementId, message) {
 }
 
 function ensureFirstRoleIsSelected() {
-  const roleKey = ui.setup.gameType === "escoba" ? "firstDealerId" : "firstCutterId";
+  const roleKey = ui.setup.gameType === "pinacle" ? "firstCutterId" : "firstDealerId";
   if (!ui.setup.selectedParticipantIds.includes(ui.setup[roleKey])) {
     ui.setup[roleKey] = ui.setup.selectedParticipantIds[0] ?? null;
   }
@@ -307,10 +312,27 @@ root.addEventListener("click", async (event) => {
 });
 
 root.addEventListener("input", (event) => {
-  if (event.target.id !== "target-score" || !ui.setup) return;
-  const value = event.target.value.trim();
-  ui.setup.targetScore = /^\d+$/.test(value) ? Number(value) : Number.NaN;
-  ui.setupError = "";
+  if (event.target.id === "target-score" && ui.setup) {
+    const value = event.target.value.trim();
+    ui.setup.targetScore = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+    ui.setupError = "";
+    return;
+  }
+
+  if (event.target.matches("[data-score-for]") && currentRouteGame()?.type === "brisca") {
+    const inputs = document.querySelectorAll("#round-form [data-score-for]");
+    const total = [...inputs].reduce((sum, input) => sum + (/^\d+$/.test(input.value.trim()) ? Number(input.value) : 0), 0);
+    const totalValue = document.querySelector("#round-score-total");
+    const totalPanel = document.querySelector("#round-total");
+    if (totalValue) totalValue.textContent = String(total);
+    if (totalPanel) {
+      const isComplete = total === BRISCA_ROUND_TOTAL;
+      totalPanel.classList.toggle("bg-green-50", isComplete);
+      totalPanel.classList.toggle("text-felt-800", isComplete);
+      totalPanel.classList.toggle("bg-amber-50", !isComplete);
+      totalPanel.classList.toggle("text-amber-900", !isComplete);
+    }
+  }
 });
 
 root.addEventListener("change", (event) => {
@@ -350,7 +372,7 @@ root.addEventListener("submit", (event) => {
     const targetInput = event.target.elements.targetScore;
     const targetValue = targetInput.value.trim();
     ui.setup.targetScore = /^\d+$/.test(targetValue) ? Number(targetValue) : Number.NaN;
-    if (ui.setup.gameType === "escoba") {
+    if (["escoba", "brisca"].includes(ui.setup.gameType)) {
       ui.setup.firstDealerId = event.target.elements.firstDealer?.value ?? ui.setup.firstDealerId;
     } else {
       ui.setup.firstCutterId = event.target.elements.firstCutter?.value ?? ui.setup.firstCutterId;
@@ -366,9 +388,9 @@ root.addEventListener("submit", (event) => {
       renderRoute();
       return;
     }
-    const firstRoleId = ui.setup.gameType === "escoba" ? ui.setup.firstDealerId : ui.setup.firstCutterId;
+    const firstRoleId = ui.setup.gameType === "pinacle" ? ui.setup.firstCutterId : ui.setup.firstDealerId;
     if (!firstRoleId) {
-      ui.setupError = ui.setup.gameType === "escoba" ? "Indica quién reparte primero." : "Indica quién empieza cortando.";
+      ui.setupError = ui.setup.gameType === "pinacle" ? "Indica quién empieza cortando." : "Indica quién reparte primero.";
       renderRoute();
       return;
     }
@@ -376,17 +398,26 @@ root.addEventListener("submit", (event) => {
     if (getActiveGame() && !window.confirm("Ya hay una partida en curso. Se archivará al iniciar la nueva. ¿Continuar?")) return;
 
     try {
-      const game = ui.setup.gameType === "escoba"
-        ? startEscobaGame({
-            participantIds: ui.setup.selectedParticipantIds,
-            targetScore: ui.setup.targetScore,
-            firstDealerId: ui.setup.firstDealerId
-          })
-        : startPinacleGame({
-            participantIds: ui.setup.selectedParticipantIds,
-            targetScore: ui.setup.targetScore,
-            firstCutterId: ui.setup.firstCutterId
-          });
+      let game;
+      if (ui.setup.gameType === "escoba") {
+        game = startEscobaGame({
+          participantIds: ui.setup.selectedParticipantIds,
+          targetScore: ui.setup.targetScore,
+          firstDealerId: ui.setup.firstDealerId
+        });
+      } else if (ui.setup.gameType === "brisca") {
+        game = startBriscaGame({
+          participantIds: ui.setup.selectedParticipantIds,
+          targetScore: ui.setup.targetScore,
+          firstDealerId: ui.setup.firstDealerId
+        });
+      } else {
+        game = startPinacleGame({
+          participantIds: ui.setup.selectedParticipantIds,
+          targetScore: ui.setup.targetScore,
+          firstCutterId: ui.setup.firstCutterId
+        });
+      }
       ui.setup = null;
       ui.setupError = "";
       navigate(`game/${encodeURIComponent(game.id)}`);
@@ -431,6 +462,36 @@ root.addEventListener("submit", (event) => {
           showToast("Turno actualizado y partida recalculada");
         } else {
           addRound(game.id, { brooms, awards });
+          showToast("Turno guardado");
+        }
+        focusResultOrRound(game.id);
+      } catch (error) {
+        showInlineError("round-error", error.message);
+      }
+      return;
+    }
+
+    if (game.type === "brisca") {
+      const scores = {};
+      for (const input of event.target.querySelectorAll("[data-score-for]")) {
+        const value = input.value.trim();
+        if (!/^\d+$/.test(value)) {
+          showInlineError("round-error", `Introduce una puntuación válida para ${game.participants.find(({ id }) => id === input.dataset.scoreFor)?.name}.`);
+          input.focus();
+          return;
+        }
+        scores[input.dataset.scoreFor] = Number(value);
+      }
+
+      try {
+        const roundId = event.target.dataset.roundId;
+        if (roundId) {
+          updateRound(game.id, roundId, { scores });
+          ui.editingRoundId = null;
+          renderRoute();
+          showToast("Turno actualizado y partida recalculada");
+        } else {
+          addRound(game.id, { scores });
           showToast("Turno guardado");
         }
         focusResultOrRound(game.id);
