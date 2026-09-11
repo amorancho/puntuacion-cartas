@@ -1,6 +1,7 @@
 import { loadAppState, saveAppState } from "./storage.js";
 import { createId, cleanName, normalizeName } from "./utils.js";
-import { validateRound } from "./games/pinacle.js";
+import { validateRound as validatePinacleRound } from "./games/pinacle.js";
+import { validateRound as validateEscobaRound } from "./games/escoba.js";
 
 let state = loadAppState();
 const listeners = new Set();
@@ -89,6 +90,50 @@ export function startPinacleGame({ participantIds, targetScore, firstCutterId })
   return game;
 }
 
+export function startEscobaGame({ participantIds, targetScore, firstDealerId }) {
+  const uniqueIds = [...new Set(participantIds)];
+  if (uniqueIds.length !== 2 || uniqueIds.length !== participantIds.length) {
+    throw new Error("Selecciona exactamente 2 jugadores distintos.");
+  }
+
+  const participants = participantIds.map((id) => state.participants.find((item) => item.id === id));
+  if (participants.some((participant) => !participant)) {
+    throw new Error("Algún jugador ya no está disponible.");
+  }
+
+  const parsedTarget = Number(targetScore);
+  if (!Number.isInteger(parsedTarget) || parsedTarget <= 0) {
+    throw new Error("La puntuación objetivo debe ser un entero positivo.");
+  }
+  if (!uniqueIds.includes(firstDealerId)) throw new Error("Indica quién reparte primero.");
+
+  const now = new Date().toISOString();
+  const game = {
+    id: createId("game"),
+    type: "escoba",
+    status: "active",
+    createdAt: now,
+    finishedAt: null,
+    targetScore: parsedTarget,
+    participants: participants.map(({ id, name }) => ({ id, name })),
+    firstDealerId,
+    rounds: [],
+    resultAcknowledgedRoundCount: null
+  };
+
+  commit((draft) => {
+    const active = draft.games.find(({ id }) => id === draft.activeGameId);
+    if (active) {
+      active.status = "abandoned";
+      active.finishedAt = now;
+    }
+    draft.games.push(game);
+    draft.activeGameId = game.id;
+  });
+
+  return game;
+}
+
 export function abandonActiveGame() {
   const active = getActiveGame();
   if (!active) return;
@@ -104,16 +149,23 @@ export function addRound(gameId, data) {
   const game = getGame(gameId);
   if (!game || game.status !== "active") throw new Error("La partida no está activa.");
 
-  const errors = validateRound(data, game);
+  const errors = game.type === "escoba" ? validateEscobaRound(data, game) : validatePinacleRound(data, game);
   if (errors.length) throw new Error(errors[0]);
 
-  const round = {
-    id: createId("round"),
-    scores: { ...data.scores },
-    exactCut: Boolean(data.exactCut),
-    electricParticipantId: data.electricParticipantId || null,
-    createdAt: new Date().toISOString()
-  };
+  const round = game.type === "escoba"
+    ? {
+        id: createId("round"),
+        brooms: { ...data.brooms },
+        awards: { ...data.awards },
+        createdAt: new Date().toISOString()
+      }
+    : {
+        id: createId("round"),
+        scores: { ...data.scores },
+        exactCut: Boolean(data.exactCut),
+        electricParticipantId: data.electricParticipantId || null,
+        createdAt: new Date().toISOString()
+      };
 
   commit((draft) => {
     const target = draft.games.find(({ id }) => id === gameId);
@@ -126,16 +178,21 @@ export function addRound(gameId, data) {
 export function updateRound(gameId, roundId, data) {
   const game = getGame(gameId);
   if (!game || game.status !== "active") throw new Error("La partida no está activa.");
-  const errors = validateRound(data, game);
+  const errors = game.type === "escoba" ? validateEscobaRound(data, game) : validatePinacleRound(data, game);
   if (errors.length) throw new Error(errors[0]);
 
   commit((draft) => {
     const target = draft.games.find(({ id }) => id === gameId);
     const round = target.rounds.find(({ id }) => id === roundId);
     if (!round) throw new Error("No se ha encontrado el turno.");
-    round.scores = { ...data.scores };
-    round.exactCut = Boolean(data.exactCut);
-    round.electricParticipantId = data.electricParticipantId || null;
+    if (game.type === "escoba") {
+      round.brooms = { ...data.brooms };
+      round.awards = { ...data.awards };
+    } else {
+      round.scores = { ...data.scores };
+      round.exactCut = Boolean(data.exactCut);
+      round.electricParticipantId = data.electricParticipantId || null;
+    }
     round.updatedAt = new Date().toISOString();
     target.resultAcknowledgedRoundCount = null;
   });
@@ -168,4 +225,3 @@ export function finishGame(gameId) {
     if (draft.activeGameId === gameId) draft.activeGameId = null;
   });
 }
-

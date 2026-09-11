@@ -1,5 +1,6 @@
 import { getGameMetadata } from "./games/index.js";
-import { getGameResult } from "./games/pinacle.js";
+import { getGameResult as getPinacleResult } from "./games/pinacle.js";
+import { escobaAwards, getGameResult as getEscobaResult } from "./games/escoba.js";
 import {
   acknowledgeResult,
   addFrequentParticipant,
@@ -10,13 +11,16 @@ import {
   getActiveGame,
   getGame,
   getState,
+  startEscobaGame,
   startPinacleGame,
   subscribe,
   updateRound
 } from "./state.js";
 import { renderGame } from "./ui/game.js";
+import { renderEscobaGame } from "./ui/game-escoba.js";
 import { renderHome } from "./ui/home.js";
 import { renderSetup } from "./ui/setup.js";
+import { renderEscobaSetup } from "./ui/setup-escoba.js";
 
 const root = document.querySelector("#app");
 const toast = document.querySelector("#toast");
@@ -29,13 +33,26 @@ const ui = {
   toastTimer: null
 };
 
-function freshSetup() {
-  return {
-    playerCount: 2,
-    selectedParticipantIds: [],
-    targetScore: 1500,
-    firstCutterId: null
-  };
+function freshSetup(gameType = "pinacle") {
+  return gameType === "escoba"
+    ? {
+        gameType,
+        playerCount: 2,
+        selectedParticipantIds: [],
+        targetScore: 15,
+        firstDealerId: null
+      }
+    : {
+        gameType,
+        playerCount: 2,
+        selectedParticipantIds: [],
+        targetScore: 1500,
+        firstCutterId: null
+      };
+}
+
+function gameResult(game) {
+  return game.type === "escoba" ? getEscobaResult(game) : getPinacleResult(game);
 }
 
 function currentRoute() {
@@ -60,8 +77,10 @@ function renderRoute() {
   const state = getState();
 
   if (route.view === "setup") {
-    ui.setup ??= freshSetup();
-    root.innerHTML = renderSetup({
+    const gameType = route.id === "escoba" ? "escoba" : "pinacle";
+    if (ui.setup?.gameType !== gameType) ui.setup = freshSetup(gameType);
+    const setupRenderer = gameType === "escoba" ? renderEscobaSetup : renderSetup;
+    root.innerHTML = setupRenderer({
       participants: state.participants,
       setup: ui.setup,
       error: ui.setupError
@@ -73,7 +92,9 @@ function renderRoute() {
     const game = getGame(route.id);
     if (game) {
       if (!game.rounds.some(({ id }) => id === ui.editingRoundId)) ui.editingRoundId = null;
-      root.innerHTML = renderGame({ game, editingRoundId: ui.editingRoundId });
+      root.innerHTML = game.type === "escoba"
+        ? renderEscobaGame({ game, editingRoundId: ui.editingRoundId })
+        : renderGame({ game, editingRoundId: ui.editingRoundId });
       return;
     }
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/home`);
@@ -101,29 +122,30 @@ function showInlineError(elementId, message) {
   error.focus?.();
 }
 
-function ensureFirstCutterIsSelected() {
-  if (!ui.setup.selectedParticipantIds.includes(ui.setup.firstCutterId)) {
-    ui.setup.firstCutterId = ui.setup.selectedParticipantIds[0] ?? null;
+function ensureFirstRoleIsSelected() {
+  const roleKey = ui.setup.gameType === "escoba" ? "firstDealerId" : "firstCutterId";
+  if (!ui.setup.selectedParticipantIds.includes(ui.setup[roleKey])) {
+    ui.setup[roleKey] = ui.setup.selectedParticipantIds[0] ?? null;
   }
 }
 
-function openSetup() {
-  ui.setup = freshSetup();
+function openSetup(gameType = "pinacle") {
+  ui.setup = freshSetup(gameType);
   ui.setupError = "";
   ui.editingRoundId = null;
-  navigate("setup/pinacle");
+  navigate(`setup/${gameType}`);
 }
 
 function focusRoundForm() {
   window.requestAnimationFrame(() => {
     document.querySelector("#round-entry")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    document.querySelector("#round-form [data-score-for]")?.focus({ preventScroll: true });
+    document.querySelector("#round-form [data-score-for], #round-form [data-brooms-for]")?.focus({ preventScroll: true });
   });
 }
 
 function focusResultOrRound(gameId) {
   const game = getGame(gameId);
-  const shouldAnnounceResult = game && getGameResult(game) && game.resultAcknowledgedRoundCount !== game.rounds.length;
+  const shouldAnnounceResult = game && gameResult(game) && game.resultAcknowledgedRoundCount !== game.rounds.length;
   if (!shouldAnnounceResult) {
     focusRoundForm();
     return;
@@ -153,7 +175,7 @@ root.addEventListener("click", async (event) => {
       showToast("Próximamente");
       return;
     }
-    openSetup();
+    openSetup(game.id);
     return;
   }
 
@@ -166,7 +188,7 @@ root.addEventListener("click", async (event) => {
   if (action === "set-player-count") {
     ui.setup.playerCount = Number(button.dataset.count);
     ui.setup.selectedParticipantIds = ui.setup.selectedParticipantIds.slice(0, ui.setup.playerCount);
-    ensureFirstCutterIsSelected();
+    ensureFirstRoleIsSelected();
     ui.setupError = "";
     renderRoute();
     return;
@@ -177,7 +199,7 @@ root.addEventListener("click", async (event) => {
     const index = ui.setup.selectedParticipantIds.indexOf(id);
     if (index >= 0) ui.setup.selectedParticipantIds.splice(index, 1);
     else if (ui.setup.selectedParticipantIds.length < ui.setup.playerCount) ui.setup.selectedParticipantIds.push(id);
-    ensureFirstCutterIsSelected();
+    ensureFirstRoleIsSelected();
     ui.setupError = "";
     renderRoute();
     return;
@@ -201,7 +223,7 @@ root.addEventListener("click", async (event) => {
     } else if (!ui.setup.selectedParticipantIds.includes(participant.id)) {
       ui.setupError = `Ya has seleccionado ${ui.setup.playerCount} participantes.`;
     }
-    ensureFirstCutterIsSelected();
+    ensureFirstRoleIsSelected();
     renderRoute();
     return;
   }
@@ -210,6 +232,15 @@ root.addEventListener("click", async (event) => {
     ui.setup.targetScore = Number(button.dataset.target);
     ui.setupError = "";
     renderRoute();
+    return;
+  }
+
+  if (action === "adjust-brooms") {
+    const input = document.getElementById(button.dataset.inputId);
+    if (!input) return;
+    const current = /^\d+$/.test(input.value) ? Number(input.value) : 0;
+    input.value = String(Math.max(0, current + Number(button.dataset.delta)));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     return;
   }
 
@@ -245,7 +276,7 @@ root.addEventListener("click", async (event) => {
       if (!confirmed) return;
       abandonActiveGame();
     }
-    openSetup();
+    openSetup(game?.type ?? "pinacle");
     return;
   }
 
@@ -288,9 +319,19 @@ root.addEventListener("change", (event) => {
     ui.setupError = "";
   }
 
+  if (event.target.name === "firstDealer" && ui.setup) {
+    ui.setup.firstDealerId = event.target.value;
+    ui.setupError = "";
+  }
+
   if (event.target.name === "electricParticipant") {
     const fieldset = event.target.closest("fieldset");
     fieldset?.querySelectorAll("label.choice").forEach((label) => label.classList.remove("choice-selected"));
+    event.target.closest("label")?.classList.add("choice-selected");
+  }
+  if (event.target.name?.startsWith("award-")) {
+    const group = event.target.closest("[data-award-group]");
+    group?.querySelectorAll("label.choice").forEach((label) => label.classList.remove("choice-selected"));
     event.target.closest("label")?.classList.add("choice-selected");
   }
 });
@@ -309,7 +350,11 @@ root.addEventListener("submit", (event) => {
     const targetInput = event.target.elements.targetScore;
     const targetValue = targetInput.value.trim();
     ui.setup.targetScore = /^\d+$/.test(targetValue) ? Number(targetValue) : Number.NaN;
-    ui.setup.firstCutterId = event.target.elements.firstCutter?.value ?? ui.setup.firstCutterId;
+    if (ui.setup.gameType === "escoba") {
+      ui.setup.firstDealerId = event.target.elements.firstDealer?.value ?? ui.setup.firstDealerId;
+    } else {
+      ui.setup.firstCutterId = event.target.elements.firstCutter?.value ?? ui.setup.firstCutterId;
+    }
 
     if (ui.setup.selectedParticipantIds.length !== ui.setup.playerCount) {
       ui.setupError = `Selecciona exactamente ${ui.setup.playerCount} participantes.`;
@@ -321,8 +366,9 @@ root.addEventListener("submit", (event) => {
       renderRoute();
       return;
     }
-    if (!ui.setup.firstCutterId) {
-      ui.setupError = "Indica quién empieza cortando.";
+    const firstRoleId = ui.setup.gameType === "escoba" ? ui.setup.firstDealerId : ui.setup.firstCutterId;
+    if (!firstRoleId) {
+      ui.setupError = ui.setup.gameType === "escoba" ? "Indica quién reparte primero." : "Indica quién empieza cortando.";
       renderRoute();
       return;
     }
@@ -330,11 +376,17 @@ root.addEventListener("submit", (event) => {
     if (getActiveGame() && !window.confirm("Ya hay una partida en curso. Se archivará al iniciar la nueva. ¿Continuar?")) return;
 
     try {
-      const game = startPinacleGame({
-        participantIds: ui.setup.selectedParticipantIds,
-        targetScore: ui.setup.targetScore,
-        firstCutterId: ui.setup.firstCutterId
-      });
+      const game = ui.setup.gameType === "escoba"
+        ? startEscobaGame({
+            participantIds: ui.setup.selectedParticipantIds,
+            targetScore: ui.setup.targetScore,
+            firstDealerId: ui.setup.firstDealerId
+          })
+        : startPinacleGame({
+            participantIds: ui.setup.selectedParticipantIds,
+            targetScore: ui.setup.targetScore,
+            firstCutterId: ui.setup.firstCutterId
+          });
       ui.setup = null;
       ui.setupError = "";
       navigate(`game/${encodeURIComponent(game.id)}`);
@@ -348,6 +400,46 @@ root.addEventListener("submit", (event) => {
   if (event.target.id === "round-form") {
     const game = currentRouteGame();
     if (!game) return;
+    if (game.type === "escoba") {
+      const brooms = {};
+      for (const input of event.target.querySelectorAll("[data-brooms-for]")) {
+        const value = input.value.trim();
+        if (!/^\d+$/.test(value)) {
+          showInlineError("round-error", `Introduce un número de escobas válido para ${game.participants.find(({ id }) => id === input.dataset.broomsFor)?.name}.`);
+          input.focus();
+          return;
+        }
+        brooms[input.dataset.broomsFor] = Number(value);
+      }
+
+      const awards = {};
+      for (const award of escobaAwards) {
+        const selected = event.target.elements[`award-${award.id}`]?.value;
+        if (selected === undefined || selected === "") {
+          showInlineError("round-error", `Indica quién consigue «${award.label}».`);
+          return;
+        }
+        awards[award.id] = selected === "__tie__" ? null : selected;
+      }
+
+      try {
+        const roundId = event.target.dataset.roundId;
+        if (roundId) {
+          updateRound(game.id, roundId, { brooms, awards });
+          ui.editingRoundId = null;
+          renderRoute();
+          showToast("Turno actualizado y partida recalculada");
+        } else {
+          addRound(game.id, { brooms, awards });
+          showToast("Turno guardado");
+        }
+        focusResultOrRound(game.id);
+      } catch (error) {
+        showInlineError("round-error", error.message);
+      }
+      return;
+    }
+
     const scores = {};
 
     for (const input of event.target.querySelectorAll("[data-score-for]")) {

@@ -1,4 +1,5 @@
-import { calculateGameProgress, getGameResult } from "../games/pinacle.js";
+import { calculateGameProgress as calculatePinacleProgress, getGameResult as getPinacleResult } from "../games/pinacle.js";
+import { calculateGameProgress as calculateEscobaProgress, getGameResult as getEscobaResult } from "../games/escoba.js";
 import { escapeHtml, formatDate, formatPoints } from "../utils.js";
 import { cardSuit } from "./components.js";
 
@@ -20,8 +21,9 @@ function gameTile(game, suit, accent) {
 }
 
 function savedGameRow(game) {
-  const { standings } = calculateGameProgress(game);
-  const result = getGameResult(game);
+  const isEscoba = game.type === "escoba";
+  const { standings } = (isEscoba ? calculateEscobaProgress : calculatePinacleProgress)(game);
+  const result = (isEscoba ? getEscobaResult : getPinacleResult)(game);
   const resultText = result?.type === "winner"
     ? `Ganó ${result.participant.name}`
     : result?.type === "tie"
@@ -33,7 +35,7 @@ function savedGameRow(game) {
   return `
     <button type="button" data-action="view-saved-game" data-game-id="${escapeHtml(game.id)}" class="flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl px-3 py-2 text-left transition hover:bg-felt-50">
       <span class="min-w-0">
-        <span class="block truncate font-extrabold">Pinacle · ${game.participants.map(({ name }) => escapeHtml(name)).join(", ")}</span>
+        <span class="block truncate font-extrabold">${isEscoba ? "Escoba" : "Pinacle"} · ${game.participants.map(({ name }) => escapeHtml(name)).join(", ")}</span>
         <span class="block text-sm text-black/55">${formatDate(game.createdAt)} · ${game.rounds.length} turno${game.rounds.length === 1 ? "" : "s"} · ${escapeHtml(resultText)}</span>
       </span>
       <span class="shrink-0 text-xl text-felt-700" aria-hidden="true">›</span>
@@ -71,7 +73,7 @@ export function renderHome({ games, activeGame, canInstall }) {
 
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
         ${gameTile({ id: "pinacle", name: "Pinacle", implemented: true }, "♠", "text-ink")}
-        ${gameTile({ id: "escoba", name: "Escoba", implemented: false }, "♦", "text-exact")}
+        ${gameTile({ id: "escoba", name: "Escoba", implemented: true }, "♦", "text-exact")}
         ${gameTile({ id: "brisca", name: "Brisca", implemented: false }, "♣", "text-felt-700")}
       </div>
 
@@ -89,4 +91,3 @@ export function renderHome({ games, activeGame, canInstall }) {
       <p class="mt-8 text-center text-xs font-semibold text-black/40">Guardado automático · Disponible sin conexión</p>
     </section>`;
 }
-

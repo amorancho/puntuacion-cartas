@@ -61,7 +61,7 @@ function sanitizeParticipants(value, includeDefaults = true) {
   return result;
 }
 
-function sanitizeGame(candidate, index) {
+function sanitizePinacleGame(candidate, index) {
   if (!candidate || candidate.type !== "pinacle" || !Array.isArray(candidate.participants)) return null;
 
   const participants = sanitizeParticipants(candidate.participants, false);
@@ -112,6 +112,68 @@ function sanitizeGame(candidate, index) {
       ? candidate.resultAcknowledgedRoundCount
       : null
   };
+}
+
+function sanitizeEscobaGame(candidate, index) {
+  if (!candidate || candidate.type !== "escoba" || !Array.isArray(candidate.participants)) return null;
+
+  const participants = sanitizeParticipants(candidate.participants, false);
+  if (participants.length !== 2) return null;
+
+  const participantIds = new Set(participants.map(({ id }) => id));
+  if (!participantIds.has(candidate.firstDealerId)) return null;
+
+  const targetScore = Number(candidate.targetScore);
+  if (!Number.isInteger(targetScore) || targetScore <= 0) return null;
+
+  const rounds = (Array.isArray(candidate.rounds) ? candidate.rounds : [])
+    .map((round, roundIndex) => {
+      const brooms = {};
+      for (const { id } of participants) {
+        const count = Number(round?.brooms?.[id]);
+        if (!Number.isInteger(count) || count < 0) return null;
+        brooms[id] = count;
+      }
+
+      const awards = {};
+      for (const awardId of ["cards", "sevenOfGolds", "golds", "sevens"]) {
+        const winnerId = round?.awards?.[awardId];
+        if (winnerId !== null && !participantIds.has(winnerId)) return null;
+        if (awardId === "sevenOfGolds" && winnerId === null) return null;
+        awards[awardId] = winnerId;
+      }
+
+      return {
+        id: String(round?.id || `round-restored-${roundIndex + 1}`),
+        brooms,
+        awards,
+        createdAt: round?.createdAt || candidate.createdAt || new Date(0).toISOString(),
+        ...(round?.updatedAt ? { updatedAt: round.updatedAt } : {})
+      };
+    })
+    .filter(Boolean);
+
+  const validStatuses = new Set(["active", "finished", "abandoned"]);
+  return {
+    id: String(candidate.id || `game-restored-${index + 1}`),
+    type: "escoba",
+    status: validStatuses.has(candidate.status) ? candidate.status : "abandoned",
+    createdAt: candidate.createdAt || new Date(0).toISOString(),
+    finishedAt: candidate.finishedAt || null,
+    targetScore,
+    participants,
+    firstDealerId: candidate.firstDealerId,
+    rounds,
+    resultAcknowledgedRoundCount: Number.isInteger(candidate.resultAcknowledgedRoundCount)
+      ? candidate.resultAcknowledgedRoundCount
+      : null
+  };
+}
+
+function sanitizeGame(candidate, index) {
+  if (candidate?.type === "pinacle") return sanitizePinacleGame(candidate, index);
+  if (candidate?.type === "escoba") return sanitizeEscobaGame(candidate, index);
+  return null;
 }
 
 export function normalizePersistedState(value) {

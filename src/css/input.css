@@ -42,7 +42,7 @@
   }
 
   .choice {
-    @apply min-h-12 rounded-2xl border-2 border-black/10 bg-white px-4 py-3 text-left font-semibold transition hover:border-felt-500/50 active:scale-[0.98];
+    @apply min-h-12 rounded-2xl border-2 border-black/10 bg-white px-4 py-3 text-left font-semibold transition hover:border-felt-500/50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35;
   }
 
   .choice-selected {
@@ -90,4 +90,3 @@
     transition-duration: 0.01ms !important;
   }
 }
-
